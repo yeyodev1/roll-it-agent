@@ -1,3 +1,4 @@
-*.bat text eol=crlf
-*.vbs text eol=crlf
+# Los .bat y .vbs se guardan con CRLF tal cual: así llegan bien también en el ZIP de GitHub.
+*.bat -text
+*.vbs -text
 *.sh text eol=lf
