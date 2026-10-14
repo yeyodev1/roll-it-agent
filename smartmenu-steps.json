@@ -1,0 +1,50 @@
+{
+  "activa": false,
+  "dateFormat": "dd/MM/yyyy",
+  "steps": [
+    { "action": "login", "note": "Entra con la clave de config.json" },
+    {
+      "action": "click",
+      "note": "Menú de reportes",
+      "text": ["Reportes", "REPORTES", "Reporte"],
+      "timeoutSeconds": 8,
+      "optional": true
+    },
+    {
+      "action": "click",
+      "note": "Reporte de ventas detallado",
+      "text": ["Ventas detallado", "Ventas Detallado", "Detallado de ventas", "Reporte de ventas detallado", "Detallado"],
+      "timeoutSeconds": 15
+    },
+    {
+      "action": "fill",
+      "note": "Fecha desde (00:00 del día)",
+      "label": ["Desde", "Fecha inicio", "Fecha desde", "Inicio", "Fecha inicial"],
+      "value": "{desde}",
+      "timeoutSeconds": 8,
+      "optional": true
+    },
+    {
+      "action": "fill",
+      "note": "Fecha hasta (ahora)",
+      "label": ["Hasta", "Fecha fin", "Fecha hasta", "Fin", "Fecha final"],
+      "value": "{hasta}",
+      "timeoutSeconds": 8,
+      "optional": true
+    },
+    {
+      "action": "click",
+      "note": "Consultar antes de exportar, si hace falta",
+      "text": ["Consultar", "Buscar", "Generar", "Filtrar"],
+      "timeoutSeconds": 5,
+      "optional": true
+    },
+    { "action": "wait", "seconds": 2 },
+    {
+      "action": "waitForDownload",
+      "note": "Exportar a Excel",
+      "text": ["Excel", "Exportar", "XLS", "Descargar"],
+      "timeoutSeconds": 90
+    }
+  ]
+}
