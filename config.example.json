@@ -1,0 +1,10 @@
+{
+  "apiUrl": "https://roll-it-backapp.vercel.app/api",
+  "syncKey": "PEGA_AQUI_LA_LLAVE",
+  "branch": "villa-club",
+  "smartmenuUrl": "http://IP-DEL-SERVIDOR/SMARTMENU/login.html",
+  "smartmenuKey": "CLAVE_DE_SMARTMENU",
+  "intervalMinutes": 5,
+  "downloadsDir": "",
+  "mode": "carpeta"
+}
