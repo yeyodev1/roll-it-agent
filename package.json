@@ -1,0 +1,28 @@
+{
+  "name": "roll-it-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agente de Roll It que corre en la PC de cada local y sube las ventas de SmartMenu al panel.",
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "descubrir": "node dist/index.js descubrir",
+    "carpeta": "node dist/index.js carpeta",
+    "auto": "node dist/index.js auto",
+    "probar-receta": "node dist/index.js probar-receta"
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.1",
+    "playwright": "1.64.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
+    "@types/node": "^20.19.43",
+    "typescript": "~5.9.3"
+  }
+}
