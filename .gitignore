@@ -1,0 +1,12 @@
+node_modules/
+dist/
+# Config real del local: lleva la llave de sincronización y la clave de SmartMenu.
+config.json
+logs/
+datos/
+descubrimiento-*/
+descubrimiento-*.zip
+*.xls
+*.xlsx
+*.har
+.DS_Store
