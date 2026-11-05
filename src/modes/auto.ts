@@ -1,17 +1,21 @@
 import path from "path";
-import { heartbeat } from "../api";
+import { assignWaiter, heartbeat } from "../api";
 import { Config } from "../config";
 import { log } from "../logger";
 import { pruneDownloads } from "../recipe";
 import { registry } from "../registry";
 import { isSalesReport } from "../report";
-import { downloadReport } from "../smartmenu";
+import { downloadReport, ticketsBySeller } from "../smartmenu";
 import { uploadUntilDone } from "../uploader";
 import { startOfDay } from "../util";
 
 export interface AutoOptions {
   upload?: boolean;
 }
+
+// Un export por vendedor pesa en la PC de caja: los meseros se refrescan cada media hora, no cada ciclo.
+const WAITERS_EVERY_MS = 30 * 60 * 1000;
+let nextWaiterPass = 0;
 
 // Si el local estuvo caído, al volver se pide desde el último envío, pero nunca más de dos meses.
 const MAX_BACKFILL_DAYS = 62;
@@ -49,5 +53,22 @@ export async function autoCycle(config: Config, options: AutoOptions = {}): Prom
   const outcome = await uploadUntilDone(config, file);
   if (outcome === "repetido") log.info("Sin ventas nuevas desde el último envío");
   if (outcome === "rechazado") throw new Error(`El panel rechazó ${path.basename(file)}`);
+  if (Date.now() >= nextWaiterPass) {
+    nextWaiterPass = Date.now() + WAITERS_EVERY_MS;
+    await syncWaiters(config, desde, hasta);
+  }
   return file;
+}
+
+/** Si falla solo se avisa en el log: las ventas ya subieron y el siguiente pase lo reintenta. */
+async function syncWaiters(config: Config, desde: Date, hasta: Date) {
+  try {
+    for (const { name, externalIds } of await ticketsBySeller(config, desde, hasta)) {
+      const r = await assignWaiter(config, name, externalIds);
+      log.info(`Mesero ${name}: ${r.matched} de ${externalIds.length} tickets marcados`);
+    }
+  } catch (error) {
+    nextWaiterPass = 0;
+    log.warn(`No pude actualizar los meseros: ${(error as Error).message}`);
+  }
 }
