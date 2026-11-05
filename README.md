@@ -3,6 +3,24 @@
 Programa que corre en una PC de cada local, lee las ventas de SmartMenu y las sube al panel de Roll It cada
 pocos minutos. SmartMenu solo se ve dentro de la red del local, por eso el agente tiene que estar ahí.
 
+## Servidor 24/7 (recomendado)
+
+Los tres SmartMenu están en la red ZeroTier privada **ROLL IT NUEVA** (`154a350c86085a90`):
+`10.221.11.156` Villa Club, `10.221.11.206` Marbol y `10.221.11.140` Cuenca. Un servidor Ubuntu cualquiera
+(VPS de $5–6/mes) que entre a esa red corre el agente de los tres locales sin depender de ninguna PC:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yeyodev1/roll-it-agent/main/instalar-servidor.sh -o instalar-servidor.sh
+sudo SYNC_KEY=... SMARTMENU_KEY=... bash instalar-servidor.sh
+```
+
+Imprime el **nodo ZeroTier** del servidor: el admin de la red lo autoriza una vez en my.zerotier.com. Cada
+2 minutos baja el reporte de ventas detallado por HTTP (login a `data/manejoUsuarios.php` y export de
+`data/excelVentasDetallado.php`, sin navegador) y lo sube. Un servicio `roll-it-agent@<local>` por local;
+si un local se cae, el back avisa por Slack (`SLACK_ERROR_WEBHOOK`) y otra vez cuando vuelve.
+Con `CF_TUNNEL_TOKEN=...` instala además el túnel de Cloudflare para que el equipo abra SmartMenu con
+Cloudflare Access, sin ZeroTier.
+
 ## Para la persona del local (Windows)
 
 1. **Instala Node.js**: entra a <https://nodejs.org/es/download>, baja la versión **LTS** e instálala con todo
