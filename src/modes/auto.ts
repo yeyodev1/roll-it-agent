@@ -1,4 +1,5 @@
 import path from "path";
+import { heartbeat } from "../api";
 import { Config } from "../config";
 import { log } from "../logger";
 import { pruneDownloads } from "../recipe";
@@ -12,15 +13,20 @@ export interface AutoOptions {
   upload?: boolean;
 }
 
-// Si se cayó internet varios días, al volver se pide desde el último envío, pero nunca más de una semana.
-const MAX_BACKFILL_DAYS = 7;
+// Si el local estuvo caído, al volver se pide desde el último envío, pero nunca más de dos meses.
+const MAX_BACKFILL_DAYS = 62;
 
 /**
  * Desde las 00:00 del día del último envío exitoso: si internet se cayó antes
- * de medianoche, las ventas de esa noche entran en el siguiente reporte.
+ * de medianoche, las ventas de esa noche entran en el siguiente reporte. En una
+ * máquina nueva (sin registro) se arranca desde la última venta que ya tiene el panel.
  */
-function reportRange(now = new Date()) {
-  const last = registry.lastSuccessAt();
+async function reportRange(config: Config, now = new Date()) {
+  let last = registry.lastSuccessAt();
+  if (!last) {
+    const answer = await heartbeat(config, "auto", "").catch(() => null);
+    if (answer?.lastSaleAt) last = new Date(answer.lastSaleAt);
+  }
   const floor = startOfDay(new Date(now.getTime() - MAX_BACKFILL_DAYS * 24 * 60 * 60 * 1000));
   let desde = startOfDay(last && last < now ? last : now);
   if (desde < floor) desde = floor;
@@ -29,7 +35,7 @@ function reportRange(now = new Date()) {
 
 /** Un ciclo: baja el reporte de SmartMenu por HTTP y lo sube. Lanza si algo falla. */
 export async function autoCycle(config: Config, options: AutoOptions = {}): Promise<string> {
-  const { desde, hasta } = reportRange();
+  const { desde, hasta } = await reportRange(config);
   const file = await downloadReport(config, desde, hasta);
   pruneDownloads();
 
