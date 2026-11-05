@@ -1,15 +1,14 @@
 import path from "path";
-import { acceptDialogs, launch, saveFailure } from "../browser";
 import { Config } from "../config";
 import { log } from "../logger";
-import { loadRecipe, pruneDownloads, runRecipe } from "../recipe";
+import { pruneDownloads } from "../recipe";
 import { registry } from "../registry";
 import { isSalesReport } from "../report";
+import { downloadReport } from "../smartmenu";
 import { uploadUntilDone } from "../uploader";
 import { startOfDay } from "../util";
 
 export interface AutoOptions {
-  visible?: boolean;
   upload?: boolean;
 }
 
@@ -28,32 +27,17 @@ function reportRange(now = new Date()) {
   return { desde, hasta: now };
 }
 
-/** Un ciclo: entra a SmartMenu, baja el reporte y lo sube. Lanza si algo falla. */
+/** Un ciclo: baja el reporte de SmartMenu por HTTP y lo sube. Lanza si algo falla. */
 export async function autoCycle(config: Config, options: AutoOptions = {}): Promise<string> {
-  const recipe = loadRecipe(config);
-  const dates = reportRange();
-  const browser = await launch(Boolean(options.visible));
-  let file: string;
-  try {
-    const context = await browser.newContext({ acceptDownloads: true, ignoreHTTPSErrors: true });
-    acceptDialogs(context);
-    const page = await context.newPage();
-    try {
-      file = await runRecipe(context, page, recipe, config, dates);
-    } catch (error) {
-      const where = await saveFailure(context, (error as Error).message);
-      throw new Error(`${(error as Error).message} (captura en ${path.relative(process.cwd(), where) || where})`);
-    }
-  } finally {
-    await browser.close().catch(() => undefined);
-  }
+  const { desde, hasta } = reportRange();
+  const file = await downloadReport(config, desde, hasta);
   pruneDownloads();
 
   if (!isSalesReport(file)) {
     throw new Error(`Lo que bajó (${path.basename(file)}) no parece el reporte de ventas detallado`);
   }
   if (options.upload === false) {
-    log.info(`Prueba de receta OK: ${file}`);
+    log.info(`Prueba OK: ${file}`);
     return file;
   }
   const outcome = await uploadUntilDone(config, file);
