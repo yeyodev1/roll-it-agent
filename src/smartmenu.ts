@@ -1,19 +1,17 @@
 import fs from "fs";
 import path from "path";
 import { Locator, Page } from "playwright";
+import * as XLSX from "xlsx";
 import { findVisible, Finder } from "./browser";
 import { Config } from "./config";
 import { log } from "./logger";
 import { downloadsCacheDir, ensureDir } from "./paths";
 import { formatDate, sleep, stamp } from "./util";
 
-/**
- * Baja el "Reporte de ventas detallado" con los mismos endpoints PHP que usa la
- * pantalla de Ventas de SmartMenu: login con la clave y luego el Excel con la
- * cookie de sesión. Sin navegador, así corre en cualquier servidor de la red.
- * Las fechas van en la hora local de la máquina (TZ=America/Guayaquil en servidores).
- */
-export async function downloadReport(config: Config, desde: Date, hasta: Date): Promise<string> {
+type Session = { base: string; cookie: string };
+
+/** Entra a SmartMenu por HTTP con la clave, igual que la pantalla de login, y devuelve la cookie. */
+async function openSession(config: Config): Promise<Session> {
   const base = config.smartmenuUrl.replace(/\/[^/]*$/, "");
   const login = await fetch(`${base}/data/manejoUsuarios.php`, {
     method: "POST",
@@ -29,31 +27,84 @@ export async function downloadReport(config: Config, desde: Date, hasta: Date): 
     .getSetCookie()
     .map((c) => c.split(";")[0])
     .join("; ");
+  return { base, cookie };
+}
 
-  const format = "yyyy-MM-dd HH:mm:ss";
+const DATE_FORMAT = "yyyy-MM-dd HH:mm:ss";
+
+/** El Excel que exporta la pantalla de Ventas; `empleado` 0 = todos los vendedores. */
+async function exportReport(s: Session, desde: Date, hasta: Date, empleado = "0"): Promise<Buffer> {
   // shortcut: sucursal 1 / caja 1 fijas (cada local tiene una sola caja hoy); si abren otra, leer data/listaCajas.php.
   const query = new URLSearchParams({
-    fechaInicial: formatDate(desde, format),
-    fechaFinal: formatDate(hasta, format),
+    fechaInicial: formatDate(desde, DATE_FORMAT),
+    fechaFinal: formatDate(hasta, DATE_FORMAT),
     tipo: "0",
     campo: "",
     valor: "",
     sucursal: "1",
     caja: "1",
-    empleado: "0",
+    empleado,
     tipodoc: "-1",
     tipoaut: "T",
     tipopago: "-1",
   });
-  const res = await fetch(`${base}/data/excelVentasDetallado.php?${query}`, {
-    headers: { cookie },
+  const res = await fetch(`${s.base}/data/excelVentasDetallado.php?${query}`, {
+    headers: { cookie: s.cookie },
     signal: AbortSignal.timeout(120_000),
   });
   if (!res.ok) throw new Error(`SmartMenu respondió ${res.status} al exportar el reporte`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+/**
+ * Baja el "Reporte de ventas detallado" con los mismos endpoints PHP que usa la
+ * pantalla de Ventas de SmartMenu. Sin navegador, así corre en cualquier
+ * servidor de la red. Las fechas van en la hora local (TZ=America/Guayaquil en servidores).
+ */
+export async function downloadReport(config: Config, desde: Date, hasta: Date): Promise<string> {
+  const buffer = await exportReport(await openSession(config), desde, hasta);
   const file = path.join(ensureDir(downloadsCacheDir), `REPORTE_VENTAS_DETALLADO_${stamp()}.xls`);
-  fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
-  log.info(`Reporte bajado de SmartMenu: ${formatDate(desde, format)} → ${formatDate(hasta, format)}`);
+  fs.writeFileSync(file, buffer);
+  log.info(`Reporte bajado de SmartMenu: ${formatDate(desde, DATE_FORMAT)} → ${formatDate(hasta, DATE_FORMAT)}`);
   return file;
+}
+
+/** Ids de ticket como los arma el back (`FACTURA-9102`): columnas Documento y Número del reporte. */
+export function ticketIds(buffer: Buffer): string[] {
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+  const ids = new Set<string>();
+  for (const row of rows) {
+    const doc = String(row[0] ?? "").trim().toUpperCase();
+    const number = Math.trunc(Number(row[1]));
+    if ((doc === "FACTURA" || doc === "TICKETS") && number) ids.add(`${doc}-${number}`);
+  }
+  return [...ids];
+}
+
+/**
+ * El reporte de ventas no dice quién atendió. Se pide filtrado por cada
+ * vendedor de SmartMenu (data/vendedores.php) y se devuelven sus tickets.
+ */
+export async function ticketsBySeller(config: Config, desde: Date, hasta: Date) {
+  const s = await openSession(config);
+  const res = await fetch(`${s.base}/data/vendedores.php`, {
+    headers: { cookie: s.cookie },
+    signal: AbortSignal.timeout(20_000),
+  });
+  const xml = await res.text();
+  // <item value="12" label="NOMBRE APELLIDO ** 0900000000" />: lo que va tras ** es un documento, no se usa.
+  const sellers = [...xml.matchAll(/value="(\d+)"\s+label="([^"]*)"/g)].map((m) => ({
+    id: m[1],
+    name: m[2].split("**")[0].replace(/\s+/g, " ").trim(),
+  }));
+  const result: { name: string; externalIds: string[] }[] = [];
+  for (const seller of sellers) {
+    if (!seller.name) continue;
+    const externalIds = ticketIds(await exportReport(s, desde, hasta, seller.id));
+    if (externalIds.length) result.push({ name: seller.name, externalIds });
+  }
+  return result;
 }
 
 const SUBMIT = /^\s*(entrar|ingresar|aceptar|acceder|iniciar|iniciar sesi[oó]n|login|ok|continuar|enviar|validar)\s*$/i;
