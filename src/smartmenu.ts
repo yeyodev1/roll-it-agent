@@ -1,7 +1,60 @@
+import fs from "fs";
+import path from "path";
 import { Locator, Page } from "playwright";
 import { findVisible, Finder } from "./browser";
+import { Config } from "./config";
 import { log } from "./logger";
-import { sleep } from "./util";
+import { downloadsCacheDir, ensureDir } from "./paths";
+import { formatDate, sleep, stamp } from "./util";
+
+/**
+ * Baja el "Reporte de ventas detallado" con los mismos endpoints PHP que usa la
+ * pantalla de Ventas de SmartMenu: login con la clave y luego el Excel con la
+ * cookie de sesión. Sin navegador, así corre en cualquier servidor de la red.
+ * Las fechas van en la hora local de la máquina (TZ=America/Guayaquil en servidores).
+ */
+export async function downloadReport(config: Config, desde: Date, hasta: Date): Promise<string> {
+  const base = config.smartmenuUrl.replace(/\/[^/]*$/, "");
+  const login = await fetch(`${base}/data/manejoUsuarios.php`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: `clave=${encodeURIComponent(config.smartmenuKey)}`,
+    signal: AbortSignal.timeout(20_000),
+  });
+  const answer = (await login.text()).trim();
+  if (!answer.startsWith("correcto")) {
+    throw new Error(`SmartMenu no aceptó la clave (respondió «${answer.slice(0, 60)}»)`);
+  }
+  const cookie = login.headers
+    .getSetCookie()
+    .map((c) => c.split(";")[0])
+    .join("; ");
+
+  const format = "yyyy-MM-dd HH:mm:ss";
+  // shortcut: sucursal 1 / caja 1 fijas (cada local tiene una sola caja hoy); si abren otra, leer data/listaCajas.php.
+  const query = new URLSearchParams({
+    fechaInicial: formatDate(desde, format),
+    fechaFinal: formatDate(hasta, format),
+    tipo: "0",
+    campo: "",
+    valor: "",
+    sucursal: "1",
+    caja: "1",
+    empleado: "0",
+    tipodoc: "-1",
+    tipoaut: "T",
+    tipopago: "-1",
+  });
+  const res = await fetch(`${base}/data/excelVentasDetallado.php?${query}`, {
+    headers: { cookie },
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!res.ok) throw new Error(`SmartMenu respondió ${res.status} al exportar el reporte`);
+  const file = path.join(ensureDir(downloadsCacheDir), `REPORTE_VENTAS_DETALLADO_${stamp()}.xls`);
+  fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+  log.info(`Reporte bajado de SmartMenu: ${formatDate(desde, format)} → ${formatDate(hasta, format)}`);
+  return file;
+}
 
 const SUBMIT = /^\s*(entrar|ingresar|aceptar|acceder|iniciar|iniciar sesi[oó]n|login|ok|continuar|enviar|validar)\s*$/i;
 
