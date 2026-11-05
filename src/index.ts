@@ -108,7 +108,7 @@ async function main() {
     const config = { ...(await readConfig("auto")), recipeUrl: flags.has("--remota") ? DEFAULT_RECIPE_URL : "" };
     if (config.recipeUrl) await refreshRecipe(config);
     try {
-      await autoCycle(config, { visible: !flags.has("--oculto"), upload: flags.has("--subir") });
+      await autoCycle(config, { upload: flags.has("--subir") });
     } catch (error) {
       log.error(errorMessage(error));
       process.exitCode = 1;
