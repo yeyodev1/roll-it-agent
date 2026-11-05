@@ -102,3 +102,19 @@ export async function uploadReport(config: Config, file: string): Promise<Upload
     return request(config, "/sync/upload", { method: "POST", body: form }, 90_000);
   });
 }
+
+/** Marca en el panel qué tickets (ya cargados) atendió un mesero. */
+export async function assignWaiter(config: Config, waiterName: string, externalIds: string[]) {
+  return withRetry(`Meseros (${waiterName})`, () =>
+    request(
+      config,
+      "/sync/waiters",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ branch: config.branch, waiterName, externalIds }),
+      },
+      30_000,
+    ),
+  );
+}
